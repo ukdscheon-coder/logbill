@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LogBill – Work Log to Invoice in Minutes</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .invoice-paper { background: white; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    @media print {
+      body * { visibility: hidden; }
+      #invoicePreview, #invoicePreview * { visibility: visible; }
+      #invoicePreview { position: absolute; left: 0; top: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+          <span class="text-white font-bold text-sm">LB</span>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">LogBill</h1>
+          <p class="text-xs text-slate-500 -mt-0.5">Work logs → Clean invoices</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="totalOutstanding" class="text-sm font-medium text-indigo-600 hidden sm:inline"></span>
+        <button onclick="showView('dashboard')" class="text-sm px-3 py-1.5 rounded-md hover:bg-slate-100">Dashboard</button>
+        <button onclick="showView('clients')" class="text-sm px-3 py-1.5 rounded-md hover:bg-slate-100">Clients</button>
+        <button onclick="showView('logs')" class="text-sm px-3 py-1.5 rounded-md hover:bg-slate-100">Work Logs</button>
+        <button onclick="showView('invoices')" class="text-sm px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">Invoices</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view">
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold">Dashboard</h2>
+        <p class="text-slate-500 text-sm mt-1">Your freelance & agency billing at a glance</p>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+          <p class="text-sm text-slate-500">Outstanding</p>
+          <p id="dashOutstanding" class="text-2xl font-bold text-indigo-600 mt-1">£0</p>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+          <p class="text-sm text-slate-500">This Month Logged</p>
+          <p id="dashMonthHours" class="text-2xl font-bold mt-1">0h</p>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+          <p class="text-sm text-slate-500">Active Clients</p>
+          <p id="dashClients" class="text-2xl font-bold mt-1">0</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 class="font-semibold mb-3">Quick Actions</h3>
+        <div class="flex flex-wrap gap-3">
+          <button onclick="showView('logs'); document.getElementById('logForm').classList.remove('hidden')" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+ Add Work Log</button>
+          <button onclick="showView('clients'); document.getElementById('clientForm').classList.remove('hidden')" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900">+ New Client</button>
+          <button onclick="createInvoiceFromOpen()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">Generate Invoice</button>
+        </div>
+      </div>
+      <div class="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+        <strong>Early Access Notice:</strong> This is a working MVP. Data is stored only in your browser (localStorage). Export important data regularly. Perfect for solo freelancers and small agencies testing the workflow before connecting a real backend.
+      </div>
+    </section>
+
+    <!-- CLIENTS -->
+    <section id="view-clients" class="view hidden">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold">Clients</h2>
+          <p class="text-slate-500 text-sm">Manage who you work with</p>
+        </div>
+        <button onclick="document.getElementById('clientForm').classList.toggle('hidden')" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+ Add Client</button>
+      </div>
+
+      <div id="clientForm" class="hidden bg-white rounded-xl border border-slate-200 p-5 mb-6">
+        <h3 class="font-semibold mb-4">New Client</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">Client / Company Name *</label>
+            <input id="clientName" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Acme Studio" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Contact Email</label>
+            <input id="clientEmail" type="email" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="billing@acme.com" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Default Hourly Rate (£)</label>
+            <input id="clientRate" type="number" min="0" step="0.01" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="75" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Currency</label>
+            <select id="clientCurrency" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+              <option value="GBP">GBP (£)</option>
+              <option value="KRW">KRW (₩)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button onclick="saveClient()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">Save Client</button>
+          <button onclick="document.getElementById('clientForm').classList.add('hidden')" class="px-4 py-2 border border-slate-300 rounded-lg text-sm">Cancel</button>
+        </div>
+      </div>
+
+      <div id="clientsList" class="space-y-3"></div>
+    </section>
+
+    <!-- WORK LOGS -->
+    <section id="view-logs" class="view hidden">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold">Work Logs</h2>
+          <p class="text-slate-500 text-sm">Record what you did and for whom</p>
+        </div>
+        <button onclick="document.getElementById('logForm').classList.toggle('hidden')" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+ Add Log</button>
+      </div>
+
+      <div id="logForm" class="hidden bg-white rounded-xl border border-slate-200 p-5 mb-6">
+        <h3 class="font-semibold mb-4">New Work Log</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">Client *</label>
+            <select id="logClient" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Date *</label>
+            <input id="logDate" type="date" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium mb-1">Description *</label>
+            <input id="logDesc" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Landing page design revisions, 3 screens" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Hours</label>
+            <input id="logHours" type="number" min="0" step="0.25" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="2.5" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Amount (override, optional)</label>
+            <input id="logAmount" type="number" min="0" step="0.01" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Leave empty to use rate × hours" />
+          </div>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button onclick="saveLog()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">Save Log</button>
+          <button onclick="document.getElementById('logForm').classList.add('hidden')" class="px-4 py-2 border border-slate-300 rounded-lg text-sm">Cancel</button>
+        </div>
+      </div>
+
+      <div class="mb-4 flex gap-2 items-center">
+        <label class="text-sm font-medium">Filter by client:</label>
+        <select id="logFilterClient" onchange="renderLogs()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+          <option value="all">All clients</option>
+        </select>
+        <label class="ml-4 flex items-center gap-1.5 text-sm">
+          <input type="checkbox" id="logFilterUnbilled" onchange="renderLogs()" checked />
+          Unbilled only
+        </label>
+      </div>
+
+      <div id="logsList" class="space-y-2"></div>
+    </section>
+
+    <!-- INVOICES -->
+    <section id="view-invoices" class="view hidden">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold">Invoices</h2>
+          <p class="text-slate-500 text-sm">Generate, send, track</p>
+        </div>
+        <button onclick="openInvoiceBuilder()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+ Create Invoice</button>
+      </div>
+
+      <div id="invoiceBuilder" class="hidden bg-white rounded-xl border border-slate-200 p-5 mb-6">
+        <h3 class="font-semibold mb-4">Create Invoice from Unbilled Logs</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">Client *</label>
+            <select id="invClient" onchange="loadUnbilledForClient()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Invoice Date</label>
+            <input id="invDate" type="date" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Due Date</label>
+            <input id="invDue" type="date" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Invoice Number</label>
+            <input id="invNumber" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div id="unbilledLogs" class="mb-4 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3 text-sm"></div>
+        <div class="flex gap-2">
+          <button onclick="generateInvoice()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">Generate Invoice</button>
+          <button onclick="document.getElementById('invoiceBuilder').classList.add('hidden')" class="px-4 py-2 border border-slate-300 rounded-lg text-sm">Cancel</button>
+        </div>
+      </div>
+
+      <div id="invoicesList" class="space-y-3"></div>
+    </section>
+
+    <!-- INVOICE PREVIEW MODAL -->
+    <div id="invoiceModal" class="fixed inset-0 bg-black/40 z-50 hidden flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-4 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white">
+          <h3 class="font-semibold">Invoice Preview</h3>
+          <div class="flex gap-2">
+            <button onclick="window.print()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Print / PDF</button>
+            <button onclick="markInvoicePaid()" class="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Mark Paid</button>
+            <button onclick="closeInvoiceModal()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg">Close</button>
+          </div>
+        </div>
+        <div id="invoicePreview" class="p-8 invoice-paper"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ========== DATA LAYER (localStorage) ==========
+    const STORAGE_KEY = 'logbill_v1';
+
+    function loadData() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return { clients: [], logs: [], invoices: [], nextInvNum: 1001 };
+      }
+      return JSON.parse(raw);
+    }
+
+    function saveData(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    let data = loadData();
+
+    // ========== HELPERS ==========
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    function formatMoney(amount, currency = 'GBP') {
+      const symbols = { GBP: '£', KRW: '₩', USD: '$', EUR: '€' };
+      const sym = symbols[currency] || currency + ' ';
+      if (currency === 'KRW') return sym + Math.round(amount).toLocaleString();
+      return sym + Number(amount).toFixed(2);
+    }
+
+    function today() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function addDays(dateStr, days) {
+      const d = new Date(dateStr);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // ========== VIEWS ==========
+    function showView(name) {
+      document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+      document.getElementById('view-' + name).classList.remove('hidden');
+      if (name === 'dashboard') renderDashboard();
+      if (name === 'clients') renderClients();
+      if (name === 'logs') {
+        populateClientSelects();
+        renderLogs();
+      }
+      if (name === 'invoices') {
+        populateClientSelects();
+        renderInvoices();
+      }
+    }
+
+    // ========== CLIENTS ==========
+    function saveClient() {
+      const name = document.getElementById('clientName').value.trim();
+      if (!name) return alert('Client name is required');
+      const client = {
+        id: uid(),
+        name,
+        email: document.getElementById('clientEmail').value.trim(),
+        rate: parseFloat(document.getElementById('clientRate').value) || 0,
+        currency: document.getElementById('clientCurrency').value
+      };
+      data.clients.push(client);
+      saveData(data);
+      document.getElementById('clientForm').classList.add('hidden');
+      document.getElementById('clientName').value = '';
+      document.getElementById('clientEmail').value = '';
+      document.getElementById('clientRate').value = '';
+      renderClients();
+      populateClientSelects();
+    }
+
+    function renderClients() {
+      const list = document.getElementById('clientsList');
+      if (data.clients.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 text-sm py-8 text-center">No clients yet. Add your first client to start logging work.</p>';
+        return;
+      }
+      list.innerHTML = data.clients.map(c => `
+        <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+          <div>
+            <p class="font-medium">${c.name}</p>
+            <p class="text-sm text-slate-500">${c.email || 'No email'} · Default rate ${formatMoney(c.rate, c.currency)}/h</p>
+          </div>
+          <button onclick="deleteClient('${c.id}')" class="text-sm text-red-600 hover:underline">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    function deleteClient(id) {
+      if (!confirm('Delete this client? Related logs will remain but become unassigned.')) return;
+      data.clients = data.clients.filter(c => c.id !== id);
+      saveData(data);
+      renderClients();
+      populateClientSelects();
+    }
+
+    // ========== LOGS ==========
+    function populateClientSelects() {
+      const opts = data.clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      ['logClient', 'invClient', 'logFilterClient'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (id === 'logFilterClient') {
+          el.innerHTML = '<option value="all">All clients</option>' + opts;
+        } else {
+          el.innerHTML = opts || '<option value="">No clients – add one first</option>';
+        }
+      });
+    }
+
+    function saveLog() {
+      const clientId = document.getElementById('logClient').value;
+      const date = document.getElementById('logDate').value;
+      const desc = document.getElementById('logDesc').value.trim();
+      if (!clientId || !date || !desc) return alert('Client, date and description are required');
+
+      const client = data.clients.find(c => c.id === clientId);
+      const hours = parseFloat(document.getElementById('logHours').value) || 0;
+      let amount = parseFloat(document.getElementById('logAmount').value);
+      if (isNaN(amount)) amount = hours * (client?.rate || 0);
+
+      data.logs.push({
+        id: uid(),
+        clientId,
+        date,
+        desc,
+        hours,
+        amount,
+        invoiced: false,
+        invoiceId: null
+      });
+      saveData(data);
+      document.getElementById('logForm').classList.add('hidden');
+      document.getElementById('logDesc').value = '';
+      document.getElementById('logHours').value = '';
+      document.getElementById('logAmount').value = '';
+      document.getElementById('logDate').value = today();
+      renderLogs();
+      renderDashboard();
+    }
+
+    function renderLogs() {
+      const filterClient = document.getElementById('logFilterClient')?.value || 'all';
+      const unbilledOnly = document.getElementById('logFilterUnbilled')?.checked;
+
+      let logs = [...data.logs].sort((a, b) => b.date.localeCompare(a.date));
+      if (filterClient !== 'all') logs = logs.filter(l => l.clientId === filterClient);
+      if (unbilledOnly) logs = logs.filter(l => !l.invoiced);
+
+      const list = document.getElementById('logsList');
+      if (logs.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 text-sm py-8 text-center">No work logs match the filter.</p>';
+        return;
+      }
+
+      list.innerHTML = logs.map(l => {
+        const client = data.clients.find(c => c.id === l.clientId);
+        return `
+          <div class="bg-white rounded-lg border border-slate-200 p-3 flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="font-medium text-sm">${l.desc}</p>
+              <p class="text-xs text-slate-500 mt-0.5">${l.date} · ${client?.name || 'Unknown'} · ${l.hours}h · ${formatMoney(l.amount, client?.currency)}</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              ${l.invoiced ? '<span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">Invoiced</span>' : '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">Unbilled</span>'}
+              <button onclick="deleteLog('${l.id}')" class="text-xs text-red-600 hover:underline">×</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function deleteLog(id) {
+      data.logs = data.logs.filter(l => l.id !== id);
+      saveData(data);
+      renderLogs();
+      renderDashboard();
+    }
+
+    // ========== INVOICES ==========
+    function openInvoiceBuilder() {
+      document.getElementById('invoiceBuilder').classList.remove('hidden');
+      document.getElementById('invDate').value = today();
+      document.getElementById('invDue').value = addDays(today(), 14);
+      document.getElementById('invNumber').value = 'INV-' + data.nextInvNum;
+      loadUnbilledForClient();
+    }
+
+    function loadUnbilledForClient() {
+      const clientId = document.getElementById('invClient').value;
+      const unbilled = data.logs.filter(l => l.clientId === clientId && !l.invoiced);
+      const box = document.getElementById('unbilledLogs');
+      if (unbilled.length === 0) {
+        box.innerHTML = '<p class="text-slate-500">No unbilled logs for this client.</p>';
+        return;
+      }
+      box.innerHTML = unbilled.map(l => `
+        <label class="flex items-start gap-2 py-1.5">
+          <input type="checkbox" class="unbilled-check mt-1" value="${l.id}" checked />
+          <span>${l.date} – ${l.desc} <span class="text-slate-500">(${l.hours}h · ${formatMoney(l.amount)})</span></span>
+        </label>
+      `).join('');
+    }
+
+    function generateInvoice() {
+      const clientId = document.getElementById('invClient').value;
+      const client = data.clients.find(c => c.id === clientId);
+      if (!client) return alert('Select a client');
+
+      const checked = [...document.querySelectorAll('.unbilled-check:checked')].map(c => c.value);
+      if (checked.length === 0) return alert('Select at least one work log');
+
+      const lines = data.logs.filter(l => checked.includes(l.id));
+      const total = lines.reduce((s, l) => s + l.amount, 0);
+
+      const inv = {
+        id: uid(),
+        number: document.getElementById('invNumber').value || ('INV-' + data.nextInvNum),
+        clientId,
+        date: document.getElementById('invDate').value,
+        due: document.getElementById('invDue').value,
+        lines: lines.map(l => ({ id: l.id, date: l.date, desc: l.desc, hours: l.hours, amount: l.amount })),
+        total,
+        status: 'sent', // draft | sent | paid
+        createdAt: new Date().toISOString()
+      };
+
+      // mark logs as invoiced
+      lines.forEach(l => {
+        l.invoiced = true;
+        l.invoiceId = inv.id;
+      });
+
+      data.invoices.unshift(inv);
+      data.nextInvNum += 1;
+      saveData(data);
+
+      document.getElementById('invoiceBuilder').classList.add('hidden');
+      renderInvoices();
+      renderLogs();
+      renderDashboard();
+      showInvoice(inv.id);
+    }
+
+    function renderInvoices() {
+      const list = document.getElementById('invoicesList');
+      if (data.invoices.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 text-sm py-8 text-center">No invoices yet. Create one from unbilled work logs.</p>';
+        return;
+      }
+      list.innerHTML = data.invoices.map(inv => {
+        const client = data.clients.find(c => c.id === inv.clientId);
+        const statusColor = inv.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : inv.status === 'sent' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600';
+        return `
+          <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-4">
+            <div>
+              <p class="font-medium">${inv.number} · ${client?.name || 'Unknown'}</p>
+              <p class="text-sm text-slate-500">${inv.date} → due ${inv.due} · ${formatMoney(inv.total, client?.currency)}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs px-2 py-0.5 rounded ${statusColor}">${inv.status}</span>
+              <button onclick="showInvoice('${inv.id}')" class="text-sm text-indigo-600 hover:underline">View</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    let currentInvoiceId = null;
+
+    function showInvoice(id) {
+      currentInvoiceId = id;
+      const inv = data.invoices.find(i => i.id === id);
+      if (!inv) return;
+      const client = data.clients.find(c => c.id === inv.clientId);
+      const currency = client?.currency || 'GBP';
+
+      const linesHtml = inv.lines.map(l => `
+        <tr>
+          <td class="py-2 pr-4 text-sm">${l.date}</td>
+          <td class="py-2 pr-4 text-sm">${l.desc}</td>
+          <td class="py-2 pr-4 text-sm text-right">${l.hours}</td>
+          <td class="py-2 text-sm text-right">${formatMoney(l.amount, currency)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('invoicePreview').innerHTML = `
+        <div class="flex justify-between items-start mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-indigo-600">INVOICE</h2>
+            <p class="text-sm text-slate-500 mt-1">${inv.number}</p>
+          </div>
+          <div class="text-right text-sm">
+            <p class="font-medium">From: Your Name / Business</p>
+            <p class="text-slate-500">Update this in a future version</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-6 mb-8 text-sm">
+          <div>
+            <p class="text-slate-500 mb-1">Bill To</p>
+            <p class="font-medium">${client?.name || ''}</p>
+            <p class="text-slate-600">${client?.email || ''}</p>
+          </div>
+          <div class="text-right">
+            <p><span class="text-slate-500">Invoice Date:</span> ${inv.date}</p>
+            <p><span class="text-slate-500">Due Date:</span> ${inv.due}</p>
+            <p class="mt-2"><span class="text-slate-500">Status:</span> <strong>${inv.status.toUpperCase()}</strong></p>
+          </div>
+        </div>
+        <table class="w-full mb-6">
+          <thead>
+            <tr class="border-b border-slate-200 text-left text-xs text-slate-500 uppercase">
+              <th class="py-2">Date</th>
+              <th class="py-2">Description</th>
+              <th class="py-2 text-right">Hours</th>
+              <th class="py-2 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${linesHtml}</tbody>
+        </table>
+        <div class="flex justify-end">
+          <div class="text-right">
+            <p class="text-sm text-slate-500">Total</p>
+            <p class="text-2xl font-bold">${formatMoney(inv.total, currency)}</p>
+          </div>
+        </div>
+        <p class="mt-10 text-xs text-slate-400 text-center">Generated with LogBill · Work logs to invoices, simply.</p>
+      `;
+      document.getElementById('invoiceModal').classList.remove('hidden');
+    }
+
+    function closeInvoiceModal() {
+      document.getElementById('invoiceModal').classList.add('hidden');
+      currentInvoiceId = null;
+    }
+
+    function markInvoicePaid() {
+      if (!currentInvoiceId) return;
+      const inv = data.invoices.find(i => i.id === currentInvoiceId);
+      if (inv) {
+        inv.status = 'paid';
+        saveData(data);
+        renderInvoices();
+        renderDashboard();
+        showInvoice(currentInvoiceId);
+      }
+    }
+
+    function createInvoiceFromOpen() {
+      showView('invoices');
+      openInvoiceBuilder();
+    }
+
+    // ========== DASHBOARD ==========
+    function renderDashboard() {
+      const outstanding = data.invoices
+        .filter(i => i.status !== 'paid')
+        .reduce((s, i) => s + i.total, 0);
+      document.getElementById('dashOutstanding').textContent = formatMoney(outstanding);
+      document.getElementById('totalOutstanding').textContent = outstanding > 0 ? `Outstanding: ${formatMoney(outstanding)}` : '';
+      document.getElementById('totalOutstanding').classList.toggle('hidden', outstanding === 0);
+
+      const thisMonth = today().slice(0, 7);
+      const monthHours = data.logs
+        .filter(l => l.date.startsWith(thisMonth))
+        .reduce((s, l) => s + l.hours, 0);
+      document.getElementById('dashMonthHours').textContent = monthHours.toFixed(1) + 'h';
+      document.getElementById('dashClients').textContent = data.clients.length;
+    }
+
+    // ========== INIT ==========
+    document.getElementById('logDate').value = today();
+    showView('dashboard');
+  </script>
+</body>
+</html>
