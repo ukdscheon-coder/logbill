@@ -4,6 +4,80 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LogBill – Work Logs to Clean Invoices</title>
+  <meta name="google-adsense-account" content="ca-pub-9335333067725848" />
+  <meta name="description" content="Turn work logs into clean professional invoices in under a minute. Built for freelancers and small agencies." />
+
+  <!-- ============================================================
+       TRACKING CONFIG — put your real IDs below
+       clarityId: Microsoft Clarity project ID
+       gaId: Google Analytics 4 measurement ID (G-XXXXXXXX)
+       gscVerification: Google Search Console meta tag content
+       adsenseClient: Google AdSense client (ca-pub-xxxxxxxx) — leave empty to disable
+       ============================================================ -->
+  <script>
+    window.LOGBILL_CONFIG = {
+      clarityId: "",
+      gaId: "",
+      gscVerification: "",
+      adsenseClient: "ca-pub-9335333067725848"
+    };
+  </script>
+
+  <!-- Google Search Console verification -->
+  <script>
+    (function () {
+      var v = window.LOGBILL_CONFIG && window.LOGBILL_CONFIG.gscVerification;
+      if (!v) return;
+      var m = document.createElement('meta');
+      m.name = 'google-site-verification';
+      m.content = v;
+      document.head.appendChild(m);
+    })();
+  </script>
+
+  <!-- Microsoft Clarity -->
+  <script>
+    (function () {
+      var id = window.LOGBILL_CONFIG && window.LOGBILL_CONFIG.clarityId;
+      if (!id) return;
+      (function (c, l, a, r, i, t, y) {
+        c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+        t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+        y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+      })(window, document, "clarity", "script", id);
+    })();
+  </script>
+
+  <!-- Google Analytics 4 -->
+  <script>
+    (function () {
+      var id = window.LOGBILL_CONFIG && window.LOGBILL_CONFIG.gaId;
+      if (!id) return;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){ dataLayer.push(arguments); }
+      window.gtag = gtag;
+      gtag('js', new Date());
+      gtag('config', id);
+    })();
+  </script>
+
+  <!-- Google AdSense (loads only if adsenseClient is set) -->
+  <script>
+    (function () {
+      var client = window.LOGBILL_CONFIG && window.LOGBILL_CONFIG.adsenseClient;
+      if (!client) return;
+      var s = document.createElement('script');
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + client;
+      document.head.appendChild(s);
+    })();
+  </script>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
