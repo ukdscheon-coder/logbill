@@ -446,6 +446,23 @@
     }
     function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
     let data = loadData();
+    function downloadBackup() {
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'logbill-backup-' + today() + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Download data backup';
+      button.className = 'px-4 py-2 text-sm border rounded-xl';
+      button.addEventListener('click', downloadBackup);
+      document.querySelector('main').prepend(button);
+    });
+
 
     function saveBizProfile() {
       data.biz = {
